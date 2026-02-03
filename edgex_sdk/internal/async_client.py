@@ -89,7 +89,9 @@ class AsyncClient:
                 connector=connector,
                 headers={
                     "Content-Type": "application/json",
-                    "Accept": "application/json"
+                    "Accept": "application/json",
+                    "channel": "apk",
+                    "user-agent": "Dart/3.8 (dart:io)"
                 }
             )
 

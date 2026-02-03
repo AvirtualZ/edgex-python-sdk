@@ -45,7 +45,9 @@ class Client:
         self.http_client = requests.Session()
         self.http_client.headers.update({
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
+            "channel": "apk",
+            "user-agent": "Dart/3.8 (dart:io)"
         })
         self.base_url = base_url
         self.account_id = account_id
