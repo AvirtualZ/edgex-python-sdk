@@ -9,7 +9,7 @@ import base64
 import websocket
 from websocket import WebSocketConnectionClosedException, WebSocketTimeoutException
 from Crypto.Hash import keccak
-from ..internal.api_key_auth import generate_credentials_from_wallet
+from ..internal.api_key_auth import build_api_key_headers, generate_credentials_from_wallet, generate_signature, get_current_timestamp
 
 from ..internal.signing_adapter import SigningAdapter
 
@@ -129,56 +129,40 @@ class Client:
         headers = {}
         url = self.url
 
-        # Add timestamp parameter for both public and private connections
-        timestamp = int(time.time() * 1000)
-        auth_data = {
-        }
-        # 
-        #     "X-edgeX-Api-Key": api_key,
-        #     "X-edgeX-Passphrase": passphrase,
-        #     "X-edgeX-Signature": headers["X-edgeX-Api-Signature"],
-        #     "X-edgeX-Timestamp": str(timestamp)
-        signature = None
+        # Generate timestamp
+        timestamp = get_current_timestamp()
         if self.is_private:
-            
-            # Add timestamp header
-            auth_data["X-edgeX-Api-Timestamp"] = str(timestamp)
+            path = f"/api/v1/private/ws"
+            request_body = f"accountId={self.account_id}&timestamp={timestamp}"
+            # Build headers with API Key authentication
+            api_headers = build_api_key_headers(
+                self.api_key,
+                self.passphrase,
+                self.api_secret,
+                timestamp,
+                'GET',
+                path,
+                request_body
+            )
 
-            # Generate signature content (no ? separator, matching Go SDK)
-            path = f"/api/v1/private/wsaccountId={self.account_id}"
-            sign_content = f"{timestamp}GET{path}"
+            # 2. JSON 转字符串（无空格）
+            json_str = json.dumps(api_headers, separators=(',', ':'))
+            # {"X-edgeX-Api-Key":"88e3836f-ed0f-9425-e07c-5d36a1ed1a47",...}
 
-            # Hash the content
-            keccak_hash = keccak.new(digest_bits=256)
-            keccak_hash.update(sign_content.encode())
-            message_hash = keccak_hash.digest()
+            # 3. UTF-8 编码
+            json_bytes = json_str.encode('utf-8')
 
-            # Sign the message using the signing adapter
-            try:
-                r, s = self.signing_adapter.sign(message_hash, self.stark_pri_key)
-            except Exception as e:
-                raise ValueError(f"failed to sign message: {str(e)}")
-
-            # Set signature header
-            signature = f"{r}{s}"
+            # 4. Base64 编码
+            b64_encoded = base64.b64encode(json_bytes).decode()
+            headers = {"sec-websocket-protocol": b64_encoded}
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}&timestamp={timestamp}"
         else:
             # For public connections, add timestamp as URL parameter
             separator = "&" if "?" in url else "?"
             url = f"{url}{separator}timestamp={timestamp}"
-        # 构建JSON
-        auth_data = {
-            "X-edgeX-Api-Key": self.api_key,
-            "X-edgeX-Passphrase": self.passphrase,
-            "X-edgeX-Signature": signature,
-            "X-edgeX-Timestamp": str(timestamp)
-        }
-
-        # Base64编码
-        protocol_value = base64.urlsafe_b64encode(json.dumps(auth_data).encode()).decode()
-
-        # 使用时
-        if self.is_private:
-            headers={"sec-websocket-protocol": protocol_value}
+        
+            
         # Create WebSocket connection
         try:
             self.conn = websocket.create_connection(url, header=headers)
