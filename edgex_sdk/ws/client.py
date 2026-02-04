@@ -138,6 +138,7 @@ class Client:
         #     "X-edgeX-Passphrase": passphrase,
         #     "X-edgeX-Signature": headers["X-edgeX-Api-Signature"],
         #     "X-edgeX-Timestamp": str(timestamp)
+        signature = None
         if self.is_private:
             
             # Add timestamp header
@@ -159,7 +160,7 @@ class Client:
                 raise ValueError(f"failed to sign message: {str(e)}")
 
             # Set signature header
-            auth_data["X-edgeX-Api-Signature"] = f"{r}{s}"
+            signature = f"{r}{s}"
         else:
             # For public connections, add timestamp as URL parameter
             separator = "&" if "?" in url else "?"
@@ -168,12 +169,12 @@ class Client:
         auth_data = {
             "X-edgeX-Api-Key": self.api_key,
             "X-edgeX-Passphrase": self.passphrase,
-            "X-edgeX-Signature": headers["X-edgeX-Api-Signature"],
+            "X-edgeX-Signature": signature,
             "X-edgeX-Timestamp": str(timestamp)
         }
 
         # Base64编码
-        protocol_value = base64.b64encode(json.dumps(auth_data).encode()).decode()
+        protocol_value = base64.urlsafe_b64encode(json.dumps(auth_data).encode()).decode()
 
         # 使用时
         if self.is_private:

@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\".venv/Scripts/python.exe\" examples/basic_usage.py)",
+      "Bash(\".venv/Scripts/pip.exe\" install eth-account)",
+      "Bash(\".venv/Scripts/pip.exe\" install requests web3)",
+      "Bash(\".venv/Scripts/pip.exe\" install python-dotenv)"
+    ]
+  }
+}

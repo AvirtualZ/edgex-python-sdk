@@ -12,6 +12,10 @@ This example demonstrates the basic functionality of the SDK:
 
 import asyncio
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from edgex_sdk import (
     Client,
@@ -27,12 +31,14 @@ async def main():
     base_url = os.getenv("EDGEX_BASE_URL", "https://testnet.edgex.exchange")
     account_id = int(os.getenv("EDGEX_ACCOUNT_ID", "12345"))
     stark_private_key = os.getenv("EDGEX_STARK_PRIVATE_KEY", "your-stark-private-key")
+    wallet_private_key = os.getenv("EDGEX_WALLET_PRIVATE_KEY", "your-stark-private-key")
 
     # Create a new client
     client = Client(
         base_url=base_url,
         account_id=account_id,
-        stark_private_key=stark_private_key
+        stark_private_key=stark_private_key,
+        wallet_private_key=wallet_private_key
     )
 
     # Get server time
@@ -86,7 +92,8 @@ async def main():
     ws_manager = WebSocketManager(
         base_url=ws_url,
         account_id=account_id,
-        stark_pri_key=stark_private_key
+        stark_pri_key=stark_private_key,
+        wallet_private_key=wallet_private_key
     )
 
     # Define message handlers

@@ -38,15 +38,15 @@ def generate_key_pair_from_signature(signature: str) -> Dict[str, str]:
     A = keccak(r)  # For generating secret
     _ = keccak(s)  # For generating apiKey and passphrase
 
-    # 4. Generate secret from A (all 32 bytes, Base64 encoded)
-    secret = base64.b64encode(A).decode().rstrip('=')
+    # 4. Generate secret from A (all 32 bytes, URL-safe Base64 encoded)
+    secret = base64.urlsafe_b64encode(A).decode().rstrip('=')
 
     # 5. Generate apiKey from _ (first 16 bytes to UUID format)
     api_key_hex = _.hex()[:32]  # First 16 bytes
     api_key = f"{api_key_hex[0:8]}-{api_key_hex[8:12]}-{api_key_hex[12:16]}-{api_key_hex[16:20]}-{api_key_hex[20:32]}"
 
-    # 6. Generate passphrase from _ (last 16 bytes, Base64 encoded)
-    passphrase = base64.b64encode(_[16:32]).decode().rstrip('=')
+    # 6. Generate passphrase from _ (last 16 bytes, URL-safe Base64 encoded)
+    passphrase = base64.urlsafe_b64encode(_[16:32]).decode().rstrip('=')
 
     return {
         'apiKey': api_key,
@@ -73,9 +73,9 @@ def generate_signature(timestamp: str, http_method: str, request_uri: str,
     # 1. Build message
     message = timestamp + http_method + request_uri + request_body
 
-    # 2. Process key: base64(encodeURI(secret))
+    # 2. Process key: urlsafe_base64(encodeURI(secret))
     encoded_secret = urllib.parse.quote(secret, safe='')
-    key = base64.b64encode(encoded_secret.encode()).decode()
+    key = base64.urlsafe_b64encode(encoded_secret.encode()).decode()
 
     # 3. HMAC-SHA256 signature
     signature = hmac.new(
