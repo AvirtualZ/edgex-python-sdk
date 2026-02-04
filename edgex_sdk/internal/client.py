@@ -8,6 +8,7 @@ import requests
 from Crypto.Hash import keccak
 
 from .signing_adapter import SigningAdapter
+from .api_key_auth import build_api_key_headers, get_current_timestamp, generate_credentials_from_wallet
 
 # Import field prime for modular arithmetic
 try:
@@ -32,7 +33,8 @@ class L2Signature:
 class Client:
     """Base client with common functionality."""
 
-    def __init__(self, base_url: str, account_id: int, stark_pri_key: str, signing_adapter: Optional[SigningAdapter] = None):
+    def __init__(self, base_url: str, account_id: int, stark_pri_key: str, signing_adapter: Optional[SigningAdapter] = None,
+                 wallet_private_key: Optional[str] = None):
         """
         Initialize the internal client.
 
@@ -41,6 +43,7 @@ class Client:
             account_id: Account ID for authentication
             stark_pri_key: Stark private key for signing
             signing_adapter: Optional signing adapter to use for cryptographic operations
+            wallet_private_key: Optional wallet private key to auto-generate API credentials
         """
         self.http_client = requests.Session()
         self.http_client.headers.update({
@@ -53,7 +56,20 @@ class Client:
         self.account_id = account_id
         self.stark_pri_key = stark_pri_key
 
-        # Use the provided signing adapter (required)
+        # API Key authentication credentials
+        # If wallet_private_key is provided, auto-generate credentials
+        if wallet_private_key:
+            credentials = generate_credentials_from_wallet(wallet_private_key)
+            api_key = credentials['apiKey']
+            passphrase = credentials['passphrase']
+            api_secret = credentials['secret']
+
+        self.api_key = api_key
+        self.passphrase = passphrase
+        self.api_secret = api_secret
+        self.use_api_key_auth = bool(api_key and passphrase and api_secret)
+
+        # Use the provided signing adapter (required for Stark auth)
         if signing_adapter is None:
             raise ValueError("signing_adapter is required")
         self.signing_adapter = signing_adapter
@@ -312,3 +328,81 @@ class Client:
 
         # Handle other types by converting to string
         return str(data)
+
+    def make_authenticated_request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Make an authenticated HTTP request using API Key authentication.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: API path (e.g., '/api/v1/private/order/createOrder')
+            data: JSON data for POST requests
+            params: Query parameters for GET requests
+
+        Returns:
+            Dict[str, Any]: Response JSON data
+
+        Raises:
+            ValueError: If the request fails
+        """
+        if not self.use_api_key_auth:
+            raise ValueError("API Key credentials not configured")
+
+        # Build URL
+        url = f"{self.base_url}{path}"
+
+        # Prepare request body for signature
+        request_body = ""
+        if method == "GET" and params:
+            # Query parameters as string for GET
+            from urllib.parse import urlencode
+            request_body = urlencode(params, doseq=True)
+        elif method == "POST" and data:
+            # JSON string for POST
+            import json
+            request_body = json.dumps(data, separators=(',', ':'))
+
+        # Generate timestamp
+        timestamp = get_current_timestamp()
+
+        # Build headers with API Key authentication
+        headers = build_api_key_headers(
+            self.api_key,
+            self.passphrase,
+            self.api_secret,
+            timestamp,
+            method,
+            path,
+            request_body
+        )
+
+        # Make the request
+        try:
+            response = self.http_client.request(
+                method=method,
+                url=url,
+                json=data if method == "POST" else None,
+                params=params if method == "GET" else None,
+                headers=headers
+            )
+            response.raise_for_status()
+
+            resp_data = response.json()
+
+            # Check response code
+            if resp_data.get("code") != "SUCCESS":
+                error_param = resp_data.get("errorParam")
+                if error_param:
+                    raise ValueError(f"request failed with error params: {error_param}")
+                raise ValueError(f"request failed with code: {resp_data.get('code')}")
+
+            return resp_data
+
+        except requests.RequestException as e:
+            raise ValueError(f"HTTP request failed: {str(e)}")

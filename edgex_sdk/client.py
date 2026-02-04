@@ -20,16 +20,26 @@ class Client:
     """Main EdgeX SDK client."""
 
     def __init__(self, base_url: str, account_id: int, stark_private_key: str,
-                 signing_adapter: Optional[SigningAdapter] = None, timeout: float = 30.0):
+                 signing_adapter: Optional[SigningAdapter] = None, timeout: float = 30.0,
+                 wallet_private_key: Optional[str] = None):
         """
         Initialize the EdgeX SDK client.
 
         Args:
             base_url: Base URL for API endpoints
             account_id: Account ID for authentication
-            stark_private_key: Stark private key for signing
+            stark_private_key: Stark private key for signing (required for Stark auth)
             signing_adapter: Optional signing adapter (defaults to StarkExSigningAdapter)
             timeout: Request timeout in seconds
+            api_key: Optional API Key for API Key authentication
+            passphrase: Optional API Passphrase for API Key authentication
+            api_secret: Optional API Secret for API Key authentication
+            wallet_private_key: Optional wallet private key to auto-generate API credentials
+
+        Note:
+            Either stark_private_key with signing_adapter (Stark auth) or
+            api_key/passphrase/api_secret (API Key auth) or
+            wallet_private_key (auto-generates API Key credentials) must be provided.
         """
         # Use StarkExSigningAdapter as default if none provided
         if signing_adapter is None:
@@ -41,7 +51,8 @@ class Client:
             account_id=account_id,
             stark_pri_key=stark_private_key,
             signing_adapter=signing_adapter,
-            timeout=timeout
+            timeout=timeout,
+            wallet_private_key=wallet_private_key
         )
 
         # Initialize API clients

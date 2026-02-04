@@ -10,6 +10,7 @@ import aiohttp
 from Crypto.Hash import keccak
 
 from .signing_adapter import SigningAdapter
+from .api_key_auth import build_api_key_headers, get_current_timestamp, generate_credentials_from_wallet
 
 # Import field prime for modular arithmetic
 try:
@@ -34,9 +35,10 @@ class L2Signature:
 class AsyncClient:
     """Async base client with common functionality."""
 
-    def __init__(self, base_url: str, account_id: int, stark_pri_key: str, 
+    def __init__(self, base_url: str, account_id: int, stark_pri_key: str,
                  signing_adapter: Optional[SigningAdapter] = None,
-                 timeout: float = 30.0, connector_limit: int = 100):
+                 timeout: float = 30.0, connector_limit: int = 100,
+                 wallet_private_key: Optional[str] = None):
         """
         Initialize the async internal client.
 
@@ -47,16 +49,26 @@ class AsyncClient:
             signing_adapter: Optional signing adapter to use for cryptographic operations
             timeout: Request timeout in seconds
             connector_limit: Maximum number of connections in the pool
+            wallet_private_key: Optional wallet private key to auto-generate API credentials
         """
         self.base_url = base_url
         self.account_id = account_id
         self.stark_pri_key = stark_pri_key
-        
-        # Use the provided signing adapter (required)
+
+        # API Key authentication credentials
+        # If wallet_private_key is provided, auto-generate credentials
+        if wallet_private_key :
+            credentials = generate_credentials_from_wallet(wallet_private_key)
+            self.api_key = credentials['apiKey']
+            self.passphrase = credentials['passphrase']
+            self.api_secret = credentials['secret']
+            self.use_api_key_auth = True
+
+        # Use the provided signing adapter (required for Stark auth)
         if signing_adapter is None:
             raise ValueError("signing_adapter is required")
         self.signing_adapter = signing_adapter
-        
+
         # Store configuration for later session creation
         self._session = None
         self._timeout = timeout
@@ -160,7 +172,7 @@ class AsyncClient:
         hash_hex = h.hexdigest()
         return int(hash_hex[:8], 16)
 
-    async def make_authenticated_request(
+    async def make_authenticated_request_old(
         self, 
         method: str, 
         path: str, 
@@ -263,6 +275,91 @@ class AsyncClient:
                 sign_content = f"{timestamp}{method}{path}"
         
         return sign_content
+
+    async def make_authenticated_request(
+        self,
+        method: str,
+        path: str,
+        data: Optional[Dict[str, Any]] = None,
+        params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Make an authenticated HTTP request using API Key authentication.
+
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            path: API path (e.g., '/api/v1/private/order/createOrder')
+            data: JSON data for POST requests
+            params: Query parameters for GET requests
+
+        Returns:
+            Dict[str, Any]: Response JSON data
+
+        Raises:
+            ValueError: If the request fails
+        """
+        if not self.use_api_key_auth:
+            raise ValueError("API Key credentials not configured")
+
+        await self._ensure_session()
+
+        # Build URL
+        url = f"{self.base_url}{path}"
+
+        # Prepare request body for signature
+        request_body = ""
+        if method == "GET" and params:
+            # Query parameters as string for GET
+            from urllib.parse import urlencode
+            request_body = urlencode(params, doseq=True)
+        elif method == "POST" and data:
+            # JSON string for POST
+            request_body = json.dumps(data, separators=(',', ':'))
+
+        # Generate timestamp
+        timestamp = get_current_timestamp()
+
+        # Build headers with API Key authentication
+        headers = build_api_key_headers(
+            self.api_key,
+            self.passphrase,
+            self.api_secret,
+            timestamp,
+            method,
+            path,
+            request_body
+        )
+
+        # Make the request
+        try:
+            async with self.session.request(
+                method=method,
+                url=url,
+                json=data if method == "POST" else None,
+                params=params if method == "GET" else None,
+                headers=headers
+            ) as response:
+                if response.status != 200:
+                    try:
+                        error_detail = await response.json()
+                        raise ValueError(f"request failed with status code: {response.status}, response: {error_detail}")
+                    except (aiohttp.ContentTypeError, json.JSONDecodeError):
+                        text = await response.text()
+                        raise ValueError(f"request failed with status code: {response.status}, response: {text}")
+
+                resp_data = await response.json()
+
+                # Check response code
+                if resp_data.get("code") != "SUCCESS":
+                    error_param = resp_data.get("errorParam")
+                    if error_param:
+                        raise ValueError(f"request failed with error params: {error_param}")
+                    raise ValueError(f"request failed with code: {resp_data.get('code')}")
+
+                return resp_data
+
+        except aiohttp.ClientError as e:
+            raise ValueError(f"HTTP request failed: {str(e)}")
 
     def get_value(self, data: Union[Dict[str, Any], List[Any], str, int, float, None]) -> str:
         """

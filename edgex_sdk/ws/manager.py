@@ -9,7 +9,7 @@ from .client import Client
 class Manager:
     """Manager for WebSocket connections."""
 
-    def __init__(self, base_url: str, account_id: int, stark_pri_key: str, signing_adapter: Optional[SigningAdapter] = None):
+    def __init__(self, base_url: str, account_id: int, stark_pri_key: str, wallet_private_key: str, signing_adapter: Optional[SigningAdapter] = None):
         """
         Initialize the WebSocket manager.
 
@@ -22,6 +22,7 @@ class Manager:
         self.base_url = base_url
         self.account_id = account_id
         self.stark_pri_key = stark_pri_key
+        self.wallet_private_key = wallet_private_key
 
         # Use StarkExSigningAdapter as default if none provided
         if signing_adapter is None:
@@ -46,6 +47,7 @@ class Manager:
                 is_private=False,
                 account_id=self.account_id,
                 stark_pri_key=self.stark_pri_key,
+                wallet_private_key=self.wallet_private_key,
                 signing_adapter=self.signing_adapter
             )
 
@@ -64,6 +66,7 @@ class Manager:
                 is_private=True,
                 account_id=self.account_id,
                 stark_pri_key=self.stark_pri_key,
+                wallet_private_key=self.wallet_private_key,
                 signing_adapter=self.signing_adapter
             )
 
